@@ -2,7 +2,7 @@ metadata:
   name: pth-ultralytics-yolov5
   namespace: cvat
   annotations:
-    name: YOLO v5 Segment
+    name: YOLO v5
     type: detector
     framework: pytorch
     spec: |
@@ -20,9 +20,6 @@ spec:
   runtime: 'python:3.6'
   handler: main:handler
   eventTimeout: 30s
-  env:
-    - name: PYTHONPATH
-      value: /opt/nuclio/sam
   build:
     image: cvat.ultralytics.yolov5
     baseImage: ubuntu:20.04
@@ -33,6 +30,10 @@ spec:
           value: DEBIAN_FRONTEND=noninteractive
         - kind: RUN
           value: apt-get update && apt-get -y install curl git python3 python3-pip
+        - kind: RUN
+          value: git clone https://github.com/ultralytics/yolov5/
+        - kind: RUN
+          value: pip install -r yolov5/requirements.txt
         - kind: WORKDIR
           value: /opt/nuclio/yolov5/
         - kind: RUN 
@@ -40,11 +41,7 @@ spec:
         - kind: RUN
           value: pip3 install torch==1.8.1+cpu torchvision==0.9.1+cpu torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
         #- kind: RUN
-        #  value: pip3 install gitpython>=3.1.30 matplotlib>=3.3 numpy>=1.22.2 opencv-python>=4.1.1 Pillow>=7.1.2 psutil PyYAML>=5.3.1 requests>=2.23.0 scipy>=1.4.1 thop>=0.1.1 torch>=1.8.0 torchvision>=0.9.0 tqdm>=4.64.0 ultralytics>=8.0.147 pandas>=1.1.4 seaborn>=0.11.0 setuptools>=65.5.1
-        - kind: RUN
-          value: git clone https://github.com/ultralytics/yolov5/
-        - kind: RUN
-          value: pip install -r yolov5/requirements.txt 
+        #  value: pip3 install gitpython>=3.1.30 matplotlib>=3.3 numpy>=1.22.2 opencv-python>=4.1.1 Pillow>=7.1.2 psutil PyYAML>=5.3.1 requests>=2.23.0 scipy>=1.4.1 thop>=0.1.1 torch>=1.8.0 torchvision>=0.9.0 tqdm>=4.64.0 ultralytics>=8.0.147 pandas>=1.1.4 seaborn>=0.11.0 setuptools>=65.5.1 
         - kind: RUN
           value: apt update && apt install --no-install-recommends -y libglib2.0-0
 
