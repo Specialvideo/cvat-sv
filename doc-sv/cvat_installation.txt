@@ -1,6 +1,6 @@
 INSTALLAZIONE DI CVAT
 
-- Eseguire il clone della repo
+- Eseguire il clone della repo (git clone --recurse-submodules https://github.com/Specialvideo/cvat-sv, --recurse-submodules serve per scaricare gli eventuali moduli, come per esempio la repo contenente yolov5)
 
 - Fare il run del seguente comando da dentro la cartella di cvat docker compose -f docker-compose.yml -f components/serverless/docker-compose.serverless.yml up -d
 
@@ -13,12 +13,16 @@ Questo comando permette di prendere un'immagine di nucleo che è necessaria per 
 	- sudo chmod +x nuctl-<version>-linux-amd64
 	- sudo ln -sf $(pwd)/nuctl-<version>-linux-amd64 /usr/local/bin/nuctl
 
+- Prendere i pesi del modello desiderato (per esempio yolov5) e inserirli nel suo folder (nel nostro esempio cvat-sv/serverless/pytorch/ultralytics/yolov5/nuclio/), chiamarlo yolov5l.pt
+
+Pesi più grandi sul repo di yolov5: https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5x6.pt
+
 - usare il seguente comando per buildare un modello dentro CVAT:
 	- Usando la cpu: ./serverless/deploy_cpu.sh serverless/path_of_the_dir_with_the_model
 	- Usando la gpu: ./serverless/deploy_gpu.sh serverless/path_of_the_dir_with_the_model
 	
+Esempio: ./serverless/deploy_cpu.sh serverless/pytorch/ultralytics/yolov5/
+NOTA: Se si vuole buildare usando la cpu è necessario avere un file di configurazione chiamato function.yaml, per sfruttare la gpu il file dovrà essere chiamato function-gpu.yaml
+	
 
-PESI DEL MODELLO
-Prendere i pesi del modello desiderato (per esempio yolov5) e inserirli nel suo folder (nel nostro esempio cvat-sv/serverless/pytorch/ultralytics/yolov5/nuclio/), chiamarlo yolov5l.pt
 
-Pesi più grandi sul repo di yolov5: https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5x6.pt
