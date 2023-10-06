@@ -16,3 +16,9 @@ Questo comando permette di prendere un'immagine di nucleo che è necessaria per 
 - usare il seguente comando per buildare un modello dentro CVAT:
 	- Usando la cpu: ./serverless/deploy_cpu.sh serverless/path_of_the_dir_with_the_model
 	- Usando la gpu: ./serverless/deploy_gpu.sh serverless/path_of_the_dir_with_the_model
+	
+
+PESI DEL MODELLO
+Prendere i pesi del modello desiderato (per esempio yolov5) e inserirli nel suo folder (nel nostro esempio cvat-sv/serverless/pytorch/ultralytics/yolov5/nuclio/), chiamarlo yolov5l.pt
+
+Pesi più grandi sul repo di yolov5: https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5x6.pt
