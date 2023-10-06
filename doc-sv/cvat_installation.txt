@@ -1,0 +1,18 @@
+INSTALLAZIONE DI CVAT
+
+- Eseguire il clone della repo
+
+- Fare il run del seguente comando da dentro la cartella di cvat docker compose -f docker-compose.yml -f components/serverless/docker-compose.serverless.yml up -d
+
+- Cercare il file docker-compose.serverless.yml dentro la cartella di cvat e vedere quale versione è supportata
+
+- Lanciare il seguente comando sostituendo a <version> la versione trovata nel punto precedentewget https://github.com/nuclio/nuclio/releases/download/<version>/nuctl-<version>-linux-amd64
+Questo comando permette di prendere un'immagine di nucleo che è necessaria per utilizzare un qualsiasi modello in cvat locale
+
+- Dare i giusti permessi al file appena scaricato.
+	- sudo chmod +x nuctl-<version>-linux-amd64
+	- sudo ln -sf $(pwd)/nuctl-<version>-linux-amd64 /usr/local/bin/nuctl
+
+- usare il seguente comando per buildare un modello dentro CVAT:
+	- Usando la cpu: ./serverless/deploy_cpu.sh serverless/path_of_the_dir_with_the_model
+	- Usando la gpu: ./serverless/deploy_gpu.sh serverless/path_of_the_dir_with_the_model
