@@ -29,3 +29,4 @@ do
 done
 
 nuctl get function --platform local
+. copyweights.sh
