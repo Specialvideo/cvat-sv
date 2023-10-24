@@ -7,6 +7,7 @@ import numpy as np
 import onnxruntime as ort
 from PIL import Image
 import base64
+from skimage.measure import approximate_polygon, find_contours
 
 class ModelHandler:
     def __init__(self, labels):
@@ -82,7 +83,7 @@ class ModelHandler:
     def get_mask(self,row,box):
         mask = row.reshape(160,160)
         mask = self.sigmoid(mask)
-        #mask = (mask > 0.5).astype('uint8')*1
+        mask = (mask > 0.5).astype('uint8')*255
         x1,y1,x2,y2 = box
         mask_x1 = round(x1/self.w*160)
         mask_y1 = round(y1/self.h*160)
@@ -96,7 +97,17 @@ class ModelHandler:
 
     def sigmoid(self,z):
         return 1 / (1 + np.exp(-z))
-
+    
+    def to_cvat_mask(self,box, mask):
+        xtl, ytl, xbr, ybr = box
+        xtl = int(xtl)
+        ytl=int(ytl)
+        xbr=int(xbr)
+        ybr=int(ybr)
+        flattened = mask.flat[:].tolist()
+        flattened.extend([xtl, ytl, xbr, ybr])
+        return flattened
+    
     def infer(self, image, threshold):
         image = np.array(image)
         image = image[:, :, ::-1].copy()
@@ -134,7 +145,7 @@ class ModelHandler:
         objects = []
         for row in boxes:
             prob = row[4:11].max()
-            if prob < 0.5:
+            if prob < 0.1:
                 continue
             xc,yc,w_,h_ = row[:4]
             class_id = row[4:11].argmax()
@@ -144,7 +155,18 @@ class ModelHandler:
             y2 = (yc+h_/2)/640*self.h
             label = yolo_classes[class_id]
             mask = self.get_mask(row[11:25611],(x1,y1,x2,y2))
-            objects.append([x1,y1,x2,y2,label,prob,mask])
+            mask_h = mask.shape[0]
+            mask_w = mask.shape[1]
+            cvat_mask = self.to_cvat_mask((x1,y1,x2,y2),mask)
+            contours = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+            #all_contour_points = np.vstack(contours)
+            #all_contour_points = [(x + x1, y + y1) for x,y in all_contour_points] 
+            #epsilon = 0.03 * cv2.arcLength(all_contour_points, True)
+            #approx_polygon = cv2.approxPolyDP(all_contour_points, epsilon, True)
+            #approx_polygon = np.array([[[p[0][0] + x1, p[0][1] + y1]] for p in approx_polygon])
+            approx_polygon = [[contour[0][0],contour[0][1]] for contour in contours[0][0]]
+            approx_polygon = np.array([[[p[0] + x1, p[1] + y1]] for p in approx_polygon])
+            objects.append([x1,y1,x2,y2,label,prob,cvat_mask,approx_polygon])
 
 
 
@@ -152,16 +174,16 @@ class ModelHandler:
         nms = []
         while len(objects)>0:
             nms.append(objects[0])
-            objects = [object for object in objects if self.iou(object,objects[0])<0.5]
+            objects = [object for object in objects if self.iou(object,objects[0])<0.8]
 
         results = []
         for elem in nms:
             results.append({
                         "confidence": str(elem[5]),
                         "label": elem[4],
-                        "points": [elem[0], elem[1], elem[2], elem[3]],
-                        "blob": base64.b64encode(elem[6]).decode(),
-                        "type": "rectangle",
+                        "points": elem[7].ravel().tolist(),
+                        "mask": elem[6],
+                        "type": "mask",
                     })
 
         return results
