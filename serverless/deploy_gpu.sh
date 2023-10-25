@@ -3,10 +3,13 @@
 
 set -eu
 
+. copyweights.sh
+. getnctl.sh
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 FUNCTIONS_DIR=${1:-$SCRIPT_DIR}
 
-nuctl create project cvat --platform local
+./nuctl create project cvat --platform local
 
 shopt -s globstar
 
@@ -16,10 +19,10 @@ do
     func_rel_path="$(realpath --relative-to="$SCRIPT_DIR" "$(dirname "$func_root")")"
 
     echo "Deploying $func_rel_path function..."
-    nuctl deploy --project-name cvat --path "$func_root" \
+    ./nuctl deploy --project-name cvat --path "$func_root" \
         --file "$func_config" --platform local
 done
 
-nuctl get function --platform local
+./nuctl get function --platform local
 
-. copyweights.sh
+

@@ -3,6 +3,9 @@
 
 set -eu
 
+. copyweights.sh
+. getnctl.sh
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 FUNCTIONS_DIR=${1:-$SCRIPT_DIR}
 
@@ -29,4 +32,4 @@ do
 done
 
 nuctl get function --platform local
-. copyweights.sh
+
