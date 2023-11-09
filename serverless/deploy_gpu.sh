@@ -3,7 +3,7 @@
 
 set -eu
 
-. copyweights.sh
+#. copyweights.sh
 . getnctl.sh
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"

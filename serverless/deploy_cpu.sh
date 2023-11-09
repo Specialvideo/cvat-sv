@@ -13,7 +13,7 @@ export DOCKER_BUILDKIT=1
 
 docker build -t cvat.openvino.base "$SCRIPT_DIR/openvino/base"
 
-nuctl create project cvat --platform local
+./nuctl create project cvat --platform local
 
 shopt -s globstar
 
@@ -27,9 +27,9 @@ do
     fi
 
     echo "Deploying $func_rel_path function..."
-    nuctl deploy --project-name cvat --path "$func_root" \
+    ./nuctl deploy --project-name cvat --path "$func_root" \
         --file "$func_config" --platform local
 done
 
-nuctl get function --platform local
+./nuctl get function --platform local
 
