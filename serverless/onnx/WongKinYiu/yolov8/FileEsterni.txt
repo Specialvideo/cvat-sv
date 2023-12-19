@@ -4,4 +4,4 @@ Se le vuoi utilizzare le puoi mettere all'interno della cartella contenente ques
 
 \\fileserver.sve.private\commesse\tesi\EdoardoProcino\cvat-sv
 ./
-best.onnx
+yolox_100.pt

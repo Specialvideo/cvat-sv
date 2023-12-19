@@ -37,3 +37,12 @@ def handler(context, event):
     
     return context.Response(body=json.dumps(results), headers={},
         content_type='application/json', status_code=200)
+    
+    ###Usefull for debug -> give an empty output thus you can better check where the error is
+    #return context.Response(body=json.dumps([{
+    #                    "confidence": str(5),
+    #                    "label": "ham",
+    #                    "points": [5,1,8,9],
+    #                    "type": "mask",
+    #                }]), headers={},
+    #    content_type='application/json', status_code=200)
