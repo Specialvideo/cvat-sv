@@ -11,7 +11,7 @@ from segment_anything import sam_model_registry, SamPredictor
 class ModelHandler:
     def __init__(self, labels):
         self.model = None
-        self.load_network(model="yolon_200.pt")
+        self.load_network(model="yolon_100.pt")
         self.labels = labels
         self.h=0
         self.w=0

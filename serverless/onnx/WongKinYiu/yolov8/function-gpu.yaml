@@ -1,8 +1,8 @@
 metadata:
-  name: YOLO-v8-x-200imgs
+  name: YOLO-v8-n-100imgs
   namespace: cvat
   annotations:
-    name: YOLO v8 x 200imgs
+    name: YOLO v8 n 100imgs
     type: detector
     framework: pytorch
     min_pos_points: 0
@@ -10,19 +10,19 @@ metadata:
     spec: |
       [
        { "id": 0, "name": "Anchovy" },
-        { "id": 1, "name": "Yellow_Pepper" },
-        { "id": 2, "name": "Olives" },
-        { "id": 3, "name": "Salame" },
-        { "id": 4, "name": "Red_Pepper" }
+        { "id": 1, "name": "Olives" },
+        { "id": 2, "name": "Salame" },
+        { "id": 3, "name": "Red_Pepper" },
+        { "id": 4, "name": "Yellow_Pepper" }
       ]
 
 spec:
-  description: YOLO v8 x 200imgs
+  description: YOLO v8 n 100imgs
   runtime: 'python:3.8'
   handler: main:handler
   eventTimeout: 30s
   build:
-    image: cvat.onnx.wongkinyiu.yolo.v8.x.200imgs
+    image: cvat.onnx.wongkinyiu.yolo.v8.x.100imgs
     baseImage: ubuntu:22.04
 
     directives:

@@ -1,8 +1,8 @@
 metadata:
-  name: YOLO-v8-x-sam-200imgs
+  name: YOLO-v8-n-sam-100imgs
   namespace: cvat
   annotations:
-    name: YOLO v8 x + sam 200imgs
+    name: YOLO v8 n + sam 100imgs
     type: detector
     framework: pytorch
     min_pos_points: 0
@@ -17,12 +17,12 @@ metadata:
       ]
 
 spec:
-  description: YOLO v8 x + sam 200imgs
+  description: YOLO v8 n + sam 100imgs
   runtime: 'python:3.8'
   handler: main:handler
   eventTimeout: 30s
   build:
-    image: cvat.onnx.wongkinyiu.yolo.v8.x.sam.200imgs
+    image: cvat.onnx.wongkinyiu.yolo.v8.x.sam.100imgs
     baseImage: ubuntu:22.04
 
     directives:

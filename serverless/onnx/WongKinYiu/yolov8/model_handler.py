@@ -13,7 +13,7 @@ from skimage.measure import approximate_polygon, find_contours
 class ModelHandler:
     def __init__(self, labels):
         self.model = None
-        self.load_network(model='yolon_200.pt')
+        self.load_network(model='yolon_100.pt')
         self.labels = labels
         self.h=0
         self.w=0
@@ -26,7 +26,7 @@ class ModelHandler:
         results = self.model([image], stream=True, conf = 0.25, iou = 0.5, retina_masks=True)
 
         yolo_classes = [
-            "Olives", "Anchovy", "Salame", "Red_Pepper", 
+            "Anchovy", "Olives", "Salame", "Red_Pepper", 
             "Yellow_Pepper"
         ]
         
