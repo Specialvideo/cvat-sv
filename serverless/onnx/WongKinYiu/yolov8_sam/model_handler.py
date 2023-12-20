@@ -38,7 +38,7 @@ class ModelHandler:
         results = self.model([image], stream=True, conf = 0.25, iou = 0.5, retina_masks=True)
         
         yolo_classes = [
-            "Olives", "Anchovy", "Salame", "Red_Pepper", 
+            "Anchovy", "Olives", "Salame", "Red_Pepper", 
             "Yellow_Pepper"
         ]
         

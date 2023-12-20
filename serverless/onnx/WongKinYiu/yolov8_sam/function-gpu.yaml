@@ -10,10 +10,10 @@ metadata:
     spec: |
       [
         { "id": 0, "name": "Anchovy" },
-        { "id": 1, "name": "Yellow_Pepper" },
-        { "id": 2, "name": "Olives" },
-        { "id": 3, "name": "Salame" },
-        { "id": 4, "name": "Red_Pepper" }
+        { "id": 1, "name": "Olives" },
+        { "id": 2, "name": "Salame" },
+        { "id": 3, "name": "Red_Pepper" },
+        { "id": 4, "name": "Yellow_Pepper" }
       ]
 
 spec:
