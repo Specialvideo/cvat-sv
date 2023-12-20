@@ -11,7 +11,7 @@ from segment_anything import sam_model_registry, SamPredictor
 class ModelHandler:
     def __init__(self, labels):
         self.model = None
-        self.load_network(model="yolox_200.pt")
+        self.load_network(model="yolon_200.pt")
         self.labels = labels
         self.h=0
         self.w=0
@@ -35,7 +35,7 @@ class ModelHandler:
     def infer(self, image, threshold):
         #YOLO inference
         
-        results = self.model([image], stream=True)
+        results = self.model([image], stream=True, conf = 0.25, iou = 0.5, retina_masks=True)
         
         yolo_classes = [
             "Olives", "Anchovy", "Salame", "Red_Pepper", 
