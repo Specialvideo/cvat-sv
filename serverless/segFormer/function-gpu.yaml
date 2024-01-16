@@ -1,0 +1,71 @@
+metadata:
+  name: segFormer-b4
+  namespace: cvat
+  annotations:
+    name: segFormer
+    type: detector
+    framework: pytorch
+    min_pos_points: 0
+    min_neg_points: 0
+    spec: |
+      [
+       { "id": 0, "name": "Olives" },
+        { "id": 1, "name": "Anchovy" },
+        { "id": 2, "name": "Red_Pepper" },
+        { "id": 3, "name": "Salame" },
+        { "id": 4, "name": "Yellow_Pepper" }
+      ]
+
+spec:
+  description: segFormer
+  runtime: 'python:3.8'
+  handler: main:handler
+  eventTimeout: 30s
+  build:
+    image: cvat.segformer.b4
+    baseImage: pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
+
+    directives:
+      preCopy:
+        - kind: USER
+          value: root
+        - kind: RUN
+          value: apt update && apt install --no-install-recommends -y wget python3-pip
+        - kind: ENV
+          value: NVIDIA_VISIBLE_DEVICES=all
+        - kind: ENV
+          value: NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # disable interactive frontend
+        - kind: ENV
+          value: DEBIAN_FRONTEND=noninteractive
+        - kind: RUN
+          value:  apt-get update && apt-get install ffmpeg git libsm6 libxext6  -y
+        - kind: WORKDIR
+          value: /opt/nuclio
+        - kind: RUN
+          value: pip install -q datasets transformers==4.35.2 evaluate torchmetrics opencv-python
+        - kind: RUN
+          value: pip install -q accelerate -U
+        - kind: WORKDIR
+          value: /opt/nuclio
+        - kind: RUN
+          value: ln -s /usr/bin/python3 /usr/bin/python
+
+  triggers:
+    myHttpTrigger:
+      maxWorkers: 1
+      kind: 'http'
+      workerAvailabilityTimeoutMilliseconds: 10000
+      attributes:
+        maxRequestBodySize: 33554432 # 32MB
+
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+
+  platform:
+    attributes:
+      restartPolicy:
+        name: always
+        maximumRetryCount: 3
+      mountMode: volume
