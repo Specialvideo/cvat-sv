@@ -23,6 +23,21 @@ const defaultState: PluginsState = {
         loginPage: {
             loginForm: [],
         },
+        modelsPage: {
+            topBar: {
+                items: [],
+            },
+            modelItem: {
+                menu: {
+                    items: [],
+                },
+                topBar: {
+                    menu: {
+                        items: [],
+                    },
+                },
+            },
+        },
         projectActions: {
             items: [],
         },
@@ -44,6 +59,11 @@ const defaultState: PluginsState = {
         loggedInModals: [],
         settings: {
             player: [],
+        },
+        about: {
+            links: {
+                items: [],
+            },
         },
     },
 };

@@ -9,11 +9,14 @@ import Axios, { AxiosError, AxiosResponse } from 'axios';
 import * as tus from 'tus-js-client';
 import { ChunkQuality } from 'cvat-data';
 
+import './axios-config';
 import {
     SerializedLabel, SerializedAnnotationFormats, ProjectsFilter,
     SerializedProject, SerializedTask, TasksFilter, SerializedUser, SerializedOrganization,
-    SerializedAbout, SerializedRemoteFile, SerializedUserAgreement, FunctionsResponseBody,
+    SerializedAbout, SerializedRemoteFile, SerializedUserAgreement,
     SerializedRegister, JobsFilter, SerializedJob, SerializedGuide, SerializedAsset,
+    SerializedQualitySettingsData, SerializedInvitationData, SerializedCloudStorage,
+    SerializedFramesMetaData, SerializedCollection,
 } from './server-response-types';
 import { SerializedQualityReportData } from './quality-report';
 import { SerializedAnalyticsReport } from './analytics-report';
@@ -21,7 +24,6 @@ import { Storage } from './storage';
 import { RQStatus, StorageLocation, WebhookSourceType } from './enums';
 import { isEmail, isResourceURL } from './common';
 import config from './config';
-import DownloadWorker from './download.worker';
 import { ServerError } from './exceptions';
 import { SerializedQualityConflictData } from './quality-conflict';
 
@@ -34,6 +36,8 @@ type Params = {
     filename?: string,
     action?: string,
 };
+
+tus.defaultOptions.storeFingerprintForResuming = false;
 
 function enableOrganization(): { org: string } {
     return { org: config.organization.organizationSlug || '' };
@@ -161,13 +165,68 @@ async function chunkUpload(file: File, uploadConfig): Promise<{ uploadSentSize: 
     });
 }
 
-function generateError(errorData: AxiosError<{ message?: string }>): ServerError {
+function filterPythonTraceback(data: string): string {
+    if (typeof data === 'string' && data.trim().startsWith('Traceback')) {
+        const lastRow = data.split('\n').findLastIndex((str) => str.trim().length);
+        return `${data.split('\n').slice(lastRow, lastRow + 1)[0]}`;
+    }
+
+    return data;
+}
+
+function generateError(errorData: AxiosError): ServerError {
     if (errorData.response) {
-        if (errorData.response.data?.message) {
-            return new ServerError(errorData.response.data?.message, errorData.response.status);
+        if (errorData.response.status >= 500 && typeof errorData.response.data === 'string') {
+            return new ServerError(
+                filterPythonTraceback(errorData.response.data),
+                errorData.response.status,
+            );
         }
-        const message = `${errorData.message}. ${JSON.stringify(errorData.response.data || '')}.`;
-        return new ServerError(message, errorData.response.status);
+
+        if (errorData.response.status >= 400 && errorData.response.data) {
+            // serializer.ValidationError
+
+            if (Array.isArray(errorData.response.data)) {
+                return new ServerError(
+                    errorData.response.data.join('\n\n'),
+                    errorData.response.status,
+                );
+            }
+
+            if (typeof errorData.response.data === 'object') {
+                const generalFields = ['non_field_errors', 'detail', 'message'];
+                const generalFieldsHelpers = {
+                    'Invalid token.': 'Not authenticated request, try to login again',
+                };
+
+                for (const field of generalFields) {
+                    if (field in errorData.response.data) {
+                        const message = errorData.response.data[field].toString();
+                        return new ServerError(
+                            generalFieldsHelpers[message] || message,
+                            errorData.response.status,
+                        );
+                    }
+                }
+
+                // serializers fields
+                const message = Object.keys(errorData.response.data).map((key) => (
+                    `**${key}**: ${errorData.response.data[key].toString()}`
+                )).join('\n\n');
+                return new ServerError(message, errorData.response.status);
+            }
+
+            // errors with string data
+            if (typeof errorData.response.data === 'string') {
+                return new ServerError(errorData.response.data, errorData.response.status);
+            }
+        }
+
+        // default handling
+        return new ServerError(
+            errorData.response.statusText || errorData.message,
+            errorData.response.status,
+        );
     }
 
     // Server is unavailable (no any response)
@@ -190,8 +249,8 @@ function prepareData(details) {
 }
 
 class WorkerWrappedAxios {
-    constructor(requestInterseptor) {
-        const worker = new DownloadWorker(requestInterseptor);
+    constructor() {
+        const worker = new Worker(new URL('./download.worker', import.meta.url));
         const requests = {};
         let requestId = 0;
 
@@ -199,7 +258,7 @@ class WorkerWrappedAxios {
             if (e.data.id in requests) {
                 try {
                     if (e.data.isSuccess) {
-                        requests[e.data.id].resolve(e.data.responseData);
+                        requests[e.data.id].resolve({ data: e.data.responseData, headers: e.data.headers });
                     } else {
                         requests[e.data.id].reject(new AxiosError(e.data.message, e.data.code));
                     }
@@ -241,9 +300,6 @@ class WorkerWrappedAxios {
     }
 }
 
-Axios.defaults.withCredentials = true;
-Axios.defaults.xsrfHeaderName = 'X-CSRFTOKEN';
-Axios.defaults.xsrfCookieName = 'csrftoken';
 const workerAxios = new WorkerWrappedAxios();
 Axios.interceptors.request.use((reqConfig) => {
     if ('params' in reqConfig && 'org' in reqConfig.params) {
@@ -262,6 +318,15 @@ Axios.interceptors.request.use((reqConfig) => {
         return reqConfig;
     }
 
+    // we want to get invitations from all organizations
+    const { backendAPI } = config;
+    const getInvitations = reqConfig.url.endsWith('/invitations') && reqConfig.method === 'get';
+    const acceptDeclineInvitation = reqConfig.url.startsWith(`${backendAPI}/invitations`) &&
+                                    (reqConfig.url.endsWith('/accept') || reqConfig.url.endsWith('/decline'));
+    if (getInvitations || acceptDeclineInvitation) {
+        return reqConfig;
+    }
+
     if (isResourceURL(reqConfig.url)) {
         return reqConfig;
     }
@@ -274,9 +339,9 @@ Axios.interceptors.response.use((response) => {
     if (isResourceURL(response.config.url) &&
         'organization' in (response.data || {})
     ) {
-        const newOrg: number | null = response.data.organization;
-        if (config.organization.organizationID !== newOrg) {
-            config?.onOrganizationChange(newOrg);
+        const newOrgId: number | null = response.data.organization;
+        if (config.organization.organizationID !== newOrgId) {
+            config?.onOrganizationChange(newOrgId);
         }
     }
 
@@ -322,13 +387,16 @@ async function about(): Promise<SerializedAbout> {
     return response.data;
 }
 
-async function share(directoryArg: string): Promise<SerializedRemoteFile[]> {
+async function share(directoryArg: string, searchPrefix?: string): Promise<SerializedRemoteFile[]> {
     const { backendAPI } = config;
 
     let response = null;
     try {
         response = await Axios.get(`${backendAPI}/server/share`, {
-            params: { directory: directoryArg },
+            params: {
+                directory: directoryArg,
+                ...(searchPrefix ? { search: searchPrefix } : {}),
+            },
         });
     } catch (errorData) {
         throw generateError(errorData);
@@ -454,6 +522,29 @@ async function resetPassword(newPassword1: string, newPassword2: string, uid: st
     }
 }
 
+async function acceptOrganizationInvitation(
+    key: string,
+): Promise<string> {
+    let response = null;
+    let orgSlug = null;
+    try {
+        response = await Axios.post(`${config.backendAPI}/invitations/${key}/accept`);
+        orgSlug = response.data.organization_slug;
+    } catch (errorData) {
+        throw generateError(errorData);
+    }
+
+    return orgSlug;
+}
+
+async function declineOrganizationInvitation(key: string): Promise<void> {
+    try {
+        await Axios.post(`${config.backendAPI}/invitations/${key}/decline`);
+    } catch (errorData) {
+        throw generateError(errorData);
+    }
+}
+
 async function getSelf(): Promise<SerializedUser> {
     const { backendAPI } = config;
 
@@ -536,9 +627,28 @@ async function healthCheck(
         });
 }
 
-async function serverRequest(url: string, data: object): Promise<any> {
+export interface ServerRequestConfig {
+    fetchAll: boolean,
+}
+
+export const sleep = (time: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, time));
+
+const defaultRequestConfig = {
+    fetchAll: false,
+};
+
+async function serverRequest(
+    url: string, data: object,
+    requestConfig: ServerRequestConfig = defaultRequestConfig,
+): Promise<any> {
     try {
-        const res = await Axios(url, data);
+        let res = null;
+        const { fetchAll: useFetchAll } = requestConfig;
+        if (useFetchAll) {
+            res = await fetchAll(url);
+        } else {
+            res = await Axios(url, data);
+        }
         return res;
     } catch (errorData) {
         throw generateError(errorData);
@@ -742,10 +852,11 @@ function exportDataset(instanceType: 'projects' | 'jobs' | 'tasks') {
                     .then((response) => {
                         const isCloudStorage = targetStorage.location === StorageLocation.CLOUD_STORAGE;
                         const { status } = response;
-                        if (status === 201) params.action = 'download';
-                        if (status === 202 || (isCloudStorage && status === 201)) {
+
+                        if (status === 202) {
                             setTimeout(request, 3000);
                         } else if (status === 201) {
+                            params.action = 'download';
                             resolve(`${baseURL}?${new URLSearchParams(params).toString()}`);
                         } else if (isCloudStorage && status === 200) {
                             resolve();
@@ -872,10 +983,11 @@ async function backupTask(id: number, targetStorage: Storage, useDefaultSettings
                 });
                 const isCloudStorage = targetStorage.location === StorageLocation.CLOUD_STORAGE;
                 const { status } = response;
-                if (status === 201) params.action = 'download';
-                if (status === 202 || (isCloudStorage && status === 201)) {
+
+                if (status === 202) {
                     setTimeout(request, 3000);
                 } else if (status === 201) {
+                    params.action = 'download';
                     resolve(`${url}?${new URLSearchParams(params).toString()}`);
                 } else if (isCloudStorage && status === 200) {
                     resolve();
@@ -977,10 +1089,11 @@ async function backupProject(
                 });
                 const isCloudStorage = targetStorage.location === StorageLocation.CLOUD_STORAGE;
                 const { status } = response;
-                if (status === 201) params.action = 'download';
-                if (status === 202 || (isCloudStorage && status === 201)) {
+
+                if (status === 202) {
                     setTimeout(request, 3000);
                 } else if (status === 201) {
+                    params.action = 'download';
                     resolve(`${url}?${new URLSearchParams(params).toString()}`);
                 } else if (isCloudStorage && status === 200) {
                     resolve();
@@ -1097,12 +1210,12 @@ function listenToCreateTask(
                     const [createdTask] = await getTasks({ id, ...params });
                     resolve(createdTask);
                 } else if (state === RQStatus.FAILED) {
-                    const failMessage = 'Data processing failed';
+                    const failMessage = 'Images processing failed';
                     listenToCreateCallbacks[id].onUpdate.forEach((callback) => {
                         callback(state, 0, failMessage);
                     });
-                    const message = `Could not create task. ${failMessage}. ${response.data.message}`;
-                    reject(new ServerError(message, 400));
+
+                    reject(new ServerError(filterPythonTraceback(response.data.message), 400));
                 } else {
                     const failMessage = 'Unknown status received';
                     listenToCreateCallbacks[id].onUpdate.forEach((callback) => {
@@ -1264,7 +1377,7 @@ async function createTask(
 async function getJobs(
     filter: JobsFilter = {},
     aggregate = false,
-): Promise<{ results: SerializedJob[], count: number }> {
+): Promise<SerializedJob[] & { count: number }> {
     const { backendAPI } = config;
     const id = filter.id || null;
 
@@ -1272,30 +1385,30 @@ async function getJobs(
     try {
         if (id !== null) {
             response = await Axios.get(`${backendAPI}/jobs/${id}`);
-            return ({
-                results: [response.data],
-                count: 1,
-            });
+            return Object.assign([response.data], { count: 1 });
         }
 
         if (aggregate) {
-            return await fetchAll(`${backendAPI}/jobs`, {
-                ...filter,
-                ...enableOrganization(),
+            response = {
+                data: await fetchAll(`${backendAPI}/jobs`, {
+                    ...filter,
+                    ...enableOrganization(),
+                }),
+            };
+        } else {
+            response = await Axios.get(`${backendAPI}/jobs`, {
+                params: {
+                    ...filter,
+                    page_size: 12,
+                },
             });
         }
-
-        response = await Axios.get(`${backendAPI}/jobs`, {
-            params: {
-                ...filter,
-                page_size: 12,
-            },
-        });
     } catch (errorData) {
         throw generateError(errorData);
     }
 
-    return response.data;
+    response.data.results.count = response.data.count;
+    return response.data.results;
 }
 
 async function getIssues(filter) {
@@ -1495,7 +1608,7 @@ async function getImageContext(jid: number, frame: number): Promise<ArrayBuffer>
     }
 }
 
-async function getData(jid: number, chunk: number, quality: ChunkQuality): Promise<ArrayBuffer> {
+async function getData(jid: number, chunk: number, quality: ChunkQuality, retry = 0): Promise<ArrayBuffer> {
     const { backendAPI } = config;
 
     try {
@@ -1509,35 +1622,40 @@ async function getData(jid: number, chunk: number, quality: ChunkQuality): Promi
             responseType: 'arraybuffer',
         });
 
-        return response;
+        const contentLength = +(response.headers || {})['content-length'];
+        if (Number.isInteger(contentLength) && response.data.byteLength < +contentLength) {
+            if (retry < 10) {
+                // corrupted zip tmp workaround
+                // if content length more than received byteLength, request the chunk again
+                // and log this error
+                setTimeout(() => {
+                    throw new Error(
+                        `Truncated chunk, try: ${retry}. Job: ${jid}, chunk: ${chunk}, quality: ${quality}. ` +
+                        `Body size: ${response.data.byteLength}`,
+                    );
+                });
+                return await getData(jid, chunk, quality, retry + 1);
+            }
+
+            // not to try anymore, throw explicit error
+            throw new Error(
+                `Truncated chunk. Job: ${jid}, chunk: ${chunk}, quality: ${quality}. ` +
+                `Body size: ${response.data.byteLength}`,
+            );
+        }
+
+        return response.data;
     } catch (errorData) {
         throw generateError(errorData);
     }
 }
 
-export interface RawFramesMetaData {
-    chunk_size: number;
-    deleted_frames: number[];
-    included_frames: number[];
-    frame_filter: string;
-    frames: {
-        width: number;
-        height: number;
-        name: string;
-        related_files: number;
-    }[];
-    image_quality: number;
-    size: number;
-    start_frame: number;
-    stop_frame: number;
-}
-
-async function getMeta(session, jid): Promise<RawFramesMetaData> {
+async function getMeta(session: 'job' | 'task', id: number): Promise<SerializedFramesMetaData> {
     const { backendAPI } = config;
 
     let response = null;
     try {
-        response = await Axios.get(`${backendAPI}/${session}s/${jid}/data/meta`);
+        response = await Axios.get(`${backendAPI}/${session}s/${id}/data/meta`);
     } catch (errorData) {
         throw generateError(errorData);
     }
@@ -1545,12 +1663,16 @@ async function getMeta(session, jid): Promise<RawFramesMetaData> {
     return response.data;
 }
 
-async function saveMeta(session, jid, meta) {
+async function saveMeta(
+    session: 'job' | 'task',
+    id: number,
+    meta: Partial<SerializedFramesMetaData>,
+): Promise<SerializedFramesMetaData> {
     const { backendAPI } = config;
 
     let response = null;
     try {
-        response = await Axios.patch(`${backendAPI}/${session}s/${jid}/data/meta`, meta);
+        response = await Axios.patch(`${backendAPI}/${session}s/${id}/data/meta`, meta);
     } catch (errorData) {
         throw generateError(errorData);
     }
@@ -1558,8 +1680,10 @@ async function saveMeta(session, jid, meta) {
     return response.data;
 }
 
-// Session is 'task' or 'job'
-async function getAnnotations(session, id) {
+async function getAnnotations(
+    session: 'task' | 'job',
+    id: number,
+): Promise<SerializedCollection> {
     const { backendAPI } = config;
 
     let response = null;
@@ -1571,52 +1695,15 @@ async function getAnnotations(session, id) {
     return response.data;
 }
 
-async function getFunctions(): Promise<FunctionsResponseBody> {
-    const { backendAPI } = config;
-
-    try {
-        const response = await fetchAll(`${backendAPI}/functions`);
-        return response;
-    } catch (errorData) {
-        if (errorData.response.status === 404) {
-            return {
-                results: [],
-                count: 0,
-            };
-        }
-        throw generateError(errorData);
-    }
-}
-
-async function getFunctionProviders() {
-    const { backendAPI } = config;
-
-    try {
-        const response = await Axios.get(`${backendAPI}/functions/info`);
-        return response.data;
-    } catch (errorData) {
-        if (errorData.response.status === 404) {
-            return [];
-        }
-        throw generateError(errorData);
-    }
-}
-
-async function deleteFunction(functionId: number) {
-    const { backendAPI } = config;
-
-    try {
-        await Axios.delete(`${backendAPI}/functions/${functionId}`);
-    } catch (errorData) {
-        throw generateError(errorData);
-    }
-}
-
-// Session is 'task' or 'job'
-async function updateAnnotations(session, id, data, action) {
+async function updateAnnotations(
+    session: 'task' | 'job',
+    id: number,
+    data: SerializedCollection,
+    action: 'create' | 'update' | 'delete' | 'put',
+): Promise<SerializedCollection> {
     const { backendAPI } = config;
     const url = `${backendAPI}/${session}s/${id}/annotations`;
-    const params = {};
+    const params: Record<string, string> = {};
     let method: string;
 
     if (action.toUpperCase() === 'PUT') {
@@ -1633,18 +1720,6 @@ async function updateAnnotations(session, id, data, action) {
         throw generateError(errorData);
     }
     return response.data;
-}
-
-async function runFunctionRequest(body) {
-    const { backendAPI } = config;
-
-    try {
-        const response = await Axios.post(`${backendAPI}/functions/requests/`, body);
-
-        return response.data;
-    } catch (errorData) {
-        throw generateError(errorData);
-    }
 }
 
 // Session is 'task' or 'job'
@@ -1734,72 +1809,12 @@ async function uploadAnnotations(
     }
 }
 
-async function getFunctionRequestStatus(requestID) {
-    const { backendAPI } = config;
-
-    try {
-        const response = await Axios.get(`${backendAPI}/functions/requests/${requestID}`);
-        return response.data;
-    } catch (errorData) {
-        throw generateError(errorData);
-    }
-}
-
-async function cancelFunctionRequest(requestId: string): Promise<void> {
-    const { backendAPI } = config;
-
-    try {
-        await Axios.delete(`${backendAPI}/functions/requests/${requestId}`);
-    } catch (errorData) {
-        throw generateError(errorData);
-    }
-}
-
-async function createFunction(functionData: any) {
-    const params = enableOrganization();
-    const { backendAPI } = config;
-
-    try {
-        const response = await Axios.post(`${backendAPI}/functions`, functionData, {
-            params,
-        });
-        return response.data;
-    } catch (errorData) {
-        throw generateError(errorData);
-    }
-}
-
 async function saveEvents(events) {
     const { backendAPI } = config;
 
     try {
         await Axios.post(`${backendAPI}/events`, events);
     } catch (errorData) {
-        throw generateError(errorData);
-    }
-}
-
-async function callFunction(funId, body) {
-    const { backendAPI } = config;
-
-    try {
-        const response = await Axios.post(`${backendAPI}/functions/${funId}/run`, body);
-        return response.data;
-    } catch (errorData) {
-        throw generateError(errorData);
-    }
-}
-
-async function getFunctionsRequests() {
-    const { backendAPI } = config;
-
-    try {
-        const response = await Axios.get(`${backendAPI}/functions/requests/`);
-        return response.data;
-    } catch (errorData) {
-        if (errorData.response.status === 404) {
-            return [];
-        }
         throw generateError(errorData);
     }
 }
@@ -1907,7 +1922,7 @@ async function updateCloudStorage(id, storageDetail) {
     }
 }
 
-async function getCloudStorages(filter = {}) {
+async function getCloudStorages(filter = {}): Promise<SerializedCloudStorage[] & { count: number }> {
     const { backendAPI } = config;
 
     let response = null;
@@ -1971,17 +1986,21 @@ async function deleteCloudStorage(id) {
     }
 }
 
-async function getOrganizations() {
+async function getOrganizations(filter) {
     const { backendAPI } = config;
 
     let response = null;
     try {
-        response = await fetchAll(`${backendAPI}/organizations`);
+        response = await Axios.get(`${backendAPI}/organizations`, {
+            params: {
+                ...filter,
+            },
+        });
     } catch (errorData) {
         throw generateError(errorData);
     }
 
-    return response.results;
+    return response.data.results;
 }
 
 async function createOrganization(data: SerializedOrganization): Promise<SerializedOrganization> {
@@ -2059,6 +2078,15 @@ async function inviteOrganizationMembers(orgId, data) {
     }
 }
 
+async function resendOrganizationInvitation(key) {
+    const { backendAPI } = config;
+    try {
+        await Axios.post(`${backendAPI}/invitations/${key}/resend`);
+    } catch (errorData) {
+        throw generateError(errorData);
+    }
+}
+
 async function updateOrganizationMembership(membershipId, data) {
     const { backendAPI } = config;
     let response = null;
@@ -2081,12 +2109,29 @@ async function deleteOrganizationMembership(membershipId: number): Promise<void>
     }
 }
 
-async function getMembershipInvitation(id) {
+async function getMembershipInvitations(
+    filter: { page?: number, filter?: string, key?: string },
+): Promise<{ results: SerializedInvitationData[], count: number }> {
     const { backendAPI } = config;
 
     let response = null;
     try {
-        response = await Axios.get(`${backendAPI}/invitations/${id}`);
+        const key = filter.key || null;
+
+        if (key) {
+            response = await Axios.get(`${backendAPI}/invitations/${key}`);
+            return ({
+                results: [response.data],
+                count: 1,
+            });
+        }
+
+        response = await Axios.get(`${backendAPI}/invitations`, {
+            params: {
+                ...filter,
+                page_size: 11,
+            },
+        });
         return response.data;
     } catch (errorData) {
         throw generateError(errorData);
@@ -2439,19 +2484,6 @@ export default Object.freeze({
         cancel: cancelLambdaRequest,
     }),
 
-    functions: Object.freeze({
-        list: getFunctions,
-        status: getFunctionRequestStatus,
-        requests: getFunctionsRequests,
-        run: runFunctionRequest,
-        call: callFunction,
-        create: createFunction,
-        providers: getFunctionProviders,
-        delete: deleteFunction,
-        cancel: cancelFunctionRequest,
-        getPreview: getPreview('functions'),
-    }),
-
     issues: Object.freeze({
         create: createIssue,
         update: updateIssue,
@@ -2478,11 +2510,14 @@ export default Object.freeze({
         create: createOrganization,
         update: updateOrganization,
         members: getOrganizationMembers,
-        invitation: getMembershipInvitation,
+        invitations: getMembershipInvitations,
         delete: deleteOrganization,
         invite: inviteOrganizationMembers,
+        resendInvitation: resendOrganizationInvitation,
         updateMembership: updateOrganizationMembership,
         deleteMembership: deleteOrganizationMembership,
+        acceptInvitation: acceptOrganizationInvitation,
+        declineInvitation: declineOrganizationInvitation,
     }),
 
     webhooks: Object.freeze({
