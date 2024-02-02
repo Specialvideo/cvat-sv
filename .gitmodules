@@ -4,3 +4,15 @@
 [submodule "serverless/pytorch/ultralytics/yolov5/nuclio/yolov5"]
 	path = serverless/pytorch/ultralytics/yolov5/nuclio/yolov5
 	url = https://github.com/ultralytics/yolov5
+[submodule "serverless/onnx/WongKinYiu/yolov8n100/yolov8"]
+	path = serverless/onnx/WongKinYiu/yolov8n100/yolov8
+	url = https://github.com/ultralytics/ultralytics
+[submodule "serverless/onnx/WongKinYiu/yolov8n200/yolov8"]
+	path = serverless/onnx/WongKinYiu/yolov8n200/yolov8
+	url = https://github.com/ultralytics/ultralytics
+[submodule "serverless/onnx/WongKinYiu/yolov8n200_sam/yolov8"]
+	path = serverless/onnx/WongKinYiu/yolov8n200_sam/yolov8
+	url = https://github.com/ultralytics/ultralytics
+[submodule "serverless/onnx/WongKinYiu/yolov8n100_sam/yolov8"]
+	path = serverless/onnx/WongKinYiu/yolov8n100_sam/yolov8
+	url = https://github.com/ultralytics/ultralytics
