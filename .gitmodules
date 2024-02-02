@@ -4,3 +4,6 @@
 [submodule "serverless/pytorch/ultralytics/yolov5/nuclio/yolov5"]
 	path = serverless/pytorch/ultralytics/yolov5/nuclio/yolov5
 	url = https://github.com/ultralytics/yolov5
+[submodule "serverless/onnx/WongKinYiu/yolov8/yolov8"]
+	path = serverless/onnx/WongKinYiu/yolov8/yolov8
+	url = https://github.com/ultralytics/ultralytics
