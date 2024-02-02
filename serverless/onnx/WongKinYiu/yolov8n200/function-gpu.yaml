@@ -1,0 +1,71 @@
+metadata:
+  name: YOLO-v8-n-200imgs
+  namespace: cvat
+  annotations:
+    name: YOLO v8 n 200imgs
+    type: detector
+    framework: pytorch
+    min_pos_points: 0
+    min_neg_points: 0
+    spec: |
+      [
+       { "id": 0, "name": "Anchovy" },
+        { "id": 1, "name": "Olives" },
+        { "id": 2, "name": "Salame" },
+        { "id": 3, "name": "Red_Pepper" },
+        { "id": 4, "name": "Yellow_Pepper" }
+      ]
+
+spec:
+  description: YOLO v8 n 200imgs
+  runtime: 'python:3.8'
+  handler: main:handler
+  eventTimeout: 30s
+  build:
+    image: cvat.onnx.wongkinyiu.yolo.v8.x.200imgs
+    baseImage: ubuntu:22.04
+
+    directives:
+      preCopy:
+        - kind: USER
+          value: root
+        - kind: RUN
+          value: apt update && apt install --no-install-recommends -y wget python3-pip
+        - kind: ENV
+          value: NVIDIA_VISIBLE_DEVICES=all
+        - kind: ENV
+          value: NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # disable interactive frontend
+        - kind: ENV
+          value: DEBIAN_FRONTEND=noninteractive
+        - kind: RUN
+          value:  apt-get update && apt-get install ffmpeg git libsm6 libxext6  -y
+        - kind: WORKDIR
+          value: /opt/nuclio
+        - kind: RUN
+          value: pip install scikit-image python-math cuda-python onnxruntime ultralytics opencv-python-headless pillow pyyaml
+        - kind: WORKDIR
+          value: /opt/nuclio
+        #- kind: RUN
+        #  value: wget https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-nms-640.onnx
+        - kind: RUN
+          value: ln -s /usr/bin/python3 /usr/bin/python
+
+  triggers:
+    myHttpTrigger:
+      maxWorkers: 1
+      kind: 'http'
+      workerAvailabilityTimeoutMilliseconds: 10000
+      attributes:
+        maxRequestBodySize: 33554432 # 32MB
+
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+
+  platform:
+    attributes:
+      restartPolicy:
+        name: always
+        maximumRetryCount: 3
+      mountMode: volume
